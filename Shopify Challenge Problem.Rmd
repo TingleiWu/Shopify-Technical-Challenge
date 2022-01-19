@@ -1,0 +1,160 @@
+---
+title: "Shopify Challenge problems"
+author: "Tinglei Wu"
+date: "1/18/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+
+shopify_dataset <- read_csv('2019 Winter Data Science Intern Challenge Data Set - Sheet1.csv')
+```
+
+
+```{r}
+head(shopify_dataset) 
+
+order_amount_each_store <- shopify_dataset %>%
+  select(shop_id, order_amount)%>% # select only shop_id and order_amount columns
+  group_by(shop_id)%>% # group by shop_id
+  summarise(total_order_amount = sum(order_amount))%>% #calculating the sum of total order amount for each of the 100 shop
+  arrange(desc(total_order_amount)) # arrange the total order amount in descending order
+
+order_amount_each_store
+
+
+
+
+```
+
+
+```{r}
+graph_for_order_amount_each_store = ggplot(order_amount_each_store, aes(x = shop_id, y = total_order_amount)) + 
+  geom_line(col = 'navy') + 
+  scale_x_continuous(limit = c(1, 100), breaks = seq(1,100,10)) + 
+  scale_y_continuous(limits = c(0,12500000), breaks = seq(0,12500000, 2500000), labels = function(y){paste0(y/1000, 'K')})+
+  labs(title = 'Total Order Amount For Each Shop', x = 'Shop ID', y= 'Total Order Amount')+
+  geom_text(x=42, y=12500000, label='Shop_id = 42', size = 4, col = "red")+
+  geom_text(x=78, y=2500000, label='Shop_id = 78', size = 4, col = "red")
+
+
+graph_for_order_amount_each_store
+
+
+```
+
+
+* From the tibble and graphs generated above, we can see that shop 42 has the greatest order amount from customers, and shop 78 has the second largest order amount. However, these two shops seem to have too many order amounts that can be outliers in this dataset and affect the accuracy of AOV. 
+
+
+```{r}
+# Checking total number of transactions based on different categories of total_items
+
+total_transactions_on_categories_of_total_items <- shopify_dataset%>%
+  group_by(total_items)%>% 
+  count(total_items)%>% # count the number of transactions for each category of total iteams
+  rename(total_transactions = n) # rename the counting column
+
+
+
+
+total_transactions_on_categories_of_total_items
+```
+
+* It is interesting to see that most of the transactions are under 8 total items, but there are still 17 transactions that have 2000 total_items. We should explore those 17 transactions further in order to check if this is the reason that affects the calculation of AOV.
+
+
+```{r}
+extreme_total_items <- shopify_dataset%>%
+  filter(total_items == 2000) # filter out rows that only has total items equal to 2000
+
+
+extreme_total_items
+```
+
+* From the filtered tibble above, we can see that all 17 transactions that have total items of 2000 were made during March and at the exact same time (4:00:00). Furthermore, the user_id and order_amount are also the same for those 17 transactions. One possible reason behind this situation is that someone is using a bot to stockpile this type of sneakers and sell for higher price in the future. Another possibility can be that someone accidentally duplicated this transaction many times. On the other hand, this proves our guess at the beginning that shop 42 is the major reason and outlier that cause the AOV to be incorrect.
+
+```{r}
+scatterplot_of_order_amount = ggplot(shopify_dataset, aes(x = order_id, y = order_amount)) + geom_point(col = 'red')+
+  theme_classic()+
+  scale_y_continuous(limits = c(0,800000), breaks = seq(0,800000, 200000), labels = function(y){paste0(y/1000, 'K')})+
+  labs(x = 'Order ID', y = 'Order Amount($)', title = 'Order Amount For Each Of The 5000 Transactions')+
+  geom_smooth(method=lm, se=FALSE,color="black", fullrange = TRUE)+
+  theme(panel.border = element_rect(color = "black", size = 0.5, fill = NA))
+  
+
+scatterplot_of_order_amount
+```
+
+* From the scatter plot above, we see that most of the transactions are about hundreds of dollars, and those outliers have order amount of over 600,000$. Those outliers certainly affected the calculation of AOV. 
+
+
+```{r}
+median(shopify_dataset$order_amount)
+#mean(shopify_dataset$order_amount)
+
+```
+
+* In this case, AOV is strongly affected by outliers. On the other hand, median would be a better metric to evaluate this data, because median, unlike mean, would be less affected by outliers.
+
+
+# Question 1(Answers):
+
+1. The problem of using AOV for this dataset is that it can be easily affected by outliers, and the result AOV of $3145.13 clearly suggested that there are something wrong with the calculation. 
+  + Shops with id of 42 and 78 seemed to have extremely large number of total order amounts, which can be suspicious and important for us to further investigate.
+  + While investigating those 17 transactions that have total items of 2000, we found out that those transactions were all made during March and at the exact same time (4:00:00). One possible reason behind this situation is that someone is using a bot to stockpile this type of sneakers and sell for higher price in the future. Another possibility can be that someone accidentally duplicated this transaction many times.
+  + In this case with many outliers, median would be a reasonable metric to evaluate this dataset.
+
+2. Median is certainly a better metric to apply to this dataset, because it is not easily affected by outliers. Mode can also be another option here, which calculates the most frequent number appeared in the order_amount column.
+
+3. After applying `median(shopify_dataset$order_amount)`, we get 284$ as the median of order amount, which is a more reasonable price for sneakers.
+
+
+# Question 2(query and answers):
+
+1. How many orders were shipped by Speedy Express in total? **Answer = 54**
+```  
+    SELECT COUNT(*)
+    FROM Shippers as s, Orders as o
+    WHERE s.ShipperID = o.ShipperID
+    AND ShipperName = "Speedy Express";
+```
+2. What is the last name of the employee with the most orders? **Answer = "Peacock"**
+``` 
+    SELECT e.LastName AS LastName, COUNT(*) AS total_orders
+    FROM Employees AS e, Orders AS o
+    WHERE e.EmployeeID = o.EmployeeID
+    GROUP BY o.EmployeeID
+    ORDER BY total_orders DESC
+    LIMIT 1;
+```
+3. What product was ordered the most by customers in Germany? **Answer = "Boston Crab Meat"**
+```  
+    SELECT p.ProductID, p.ProductName, sum(Quantity) AS total_number_order
+    FROM Products AS p, Orders AS o, OrderDetails AS od, Customers AS c
+    WHERE c.Country = "Germany"
+    AND o.OrderID = od.OrderID
+    AND od.ProductID = p.ProductID
+    AND o.CustomerID = c.CustomerID
+    GROUP BY p.ProductID
+    ORDER BY total_number_order DESC
+    LIMIT 1;
+```
+
+
+
+
+
+
+
+
+
+
+
